@@ -1,0 +1,179 @@
+name: LLM Shield - Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Principe du moindre privilège
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  # Build et test des services
+  build-services:
+    name: Build Services
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Anonymizer
+        uses: docker/build-push-action@v5
+        with:
+          context: ./anonymizer
+          push: false
+          tags: llm-shield-anonymizer:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          push: false
+          tags: llm-shield-gateway:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Unit tests Python
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install anonymizer deps & test
+        run: |
+          cd anonymizer
+          pip install -r requirements.txt
+          pytest test_app.py -v --tb=short
+
+      - name: Install gateway deps & test
+        run: |
+          cd gateway
+          pip install -r requirements.txt
+          pytest test_app.py -v --tb=short
+
+  # Tests d'intégration
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-services
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start services
+        run: |
+          cp -n .env.example .env 2>/dev/null || true
+          docker compose up -d --wait
+          
+      - name: Test Anonymizer Health (Internal)
+        run: |
+          # Use healthcheck script inside container (since no curl/shell)
+          docker exec anonymizer python3 healthcheck.py
+
+      - name: Test Anonymizer Function (Internal)
+        run: |
+          # Use ephemeral curl container to test internal endpoint
+          network=$(docker compose ps -q anonymizer | xargs docker inspect --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+          response=$(docker run --rm --network $network curlimages/curl -s -X POST http://anonymizer:5001/anonymize \
+            -H "Content-Type: application/json" \
+            -d '{"text": "Mon email est test@example.com"}')
+          echo "Anonymize response: $response"
+          echo "$response" | grep -q "EMAIL" || exit 1
+
+      - name: Test Gateway Health (Internal)
+        run: |
+          docker exec gateway python3 healthcheck.py
+
+      - name: Test Global Health (External via Nginx)
+        run: |
+          response=$(curl -s http://localhost/health)
+          echo "Global response: $response"
+          echo "$response" | grep -q "gateway" || exit 1
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down
+
+  # Scan de sécurité des images
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-services
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Anonymizer for scan
+        run: docker build -t llm-shield-anonymizer:scan ./anonymizer
+
+      - name: Scan Anonymizer with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: llm-shield-anonymizer:scan
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Build Gateway for scan
+        run: docker build -t llm-shield-gateway:scan ./gateway
+
+      - name: Scan Gateway with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: llm-shield-gateway:scan
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+  # Lint Python
+  lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linters
+        run: pip install flake8 black
+
+      - name: Lint Anonymizer
+        run: |
+          flake8 anonymizer/app.py --max-line-length=120 --ignore=E501
+          black --check anonymizer/app.py || echo "Would reformat"
+
+      - name: Lint Gateway
+        run: |
+          flake8 gateway/app.py --max-line-length=120 --ignore=E501
+          black --check gateway/app.py || echo "Would reformat"

@@ -1,0 +1,18 @@
+.env
+
+# Ansible
+ansible.cfg
+
+# Terraform
+terraform/.terraform
+.terraform*
+backend.tfvars
+*plan*
+*tfstate*
+
+# shared
+terraform/inventory
+
+# docs
+__pycache__
+.pytest_cache/

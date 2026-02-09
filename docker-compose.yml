@@ -1,0 +1,137 @@
+services:
+  # ══════════════════════════════════════════════════════════════
+  # REVERSE PROXY - Point d'entrée sécurisé
+  # ══════════════════════════════════════════════════════════════
+  nginx:
+    image: nginx:${NGINX_VERSION:-1.25.4-alpine}
+    container_name: nginx-proxy
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /var/cache/nginx:/var/cache/nginx # Writable for nginx
+      - /var/run:/var/run                 # Writable for pid/sock
+    depends_on:
+      - gateway
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+    networks:
+      - ai-platform
+
+  # ══════════════════════════════════════════════════════════════
+  # GATEWAY - Anonymisation + Forward (interne)
+  # ══════════════════════════════════════════════════════════════
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    expose:
+      - "4000"
+    environment:
+      - ANONYMIZER_URL=http://anonymizer:5001
+      - LITELLM_URL=http://litellm:4000
+      - PORT=4000
+    depends_on:
+      - anonymizer
+      - litellm
+    healthcheck:
+      test: ["CMD", "python3", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "65532:65532" # nonroot in distroless
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - ai-platform
+
+  # ══════════════════════════════════════════════════════════════
+  # ANONYMIZER - Masquage PII/Secrets (interne)
+  # ══════════════════════════════════════════════════════════════
+  anonymizer:
+    build: ./anonymizer
+    container_name: anonymizer
+    expose:
+      - "5001"
+    environment:
+      - PORT=5001
+    healthcheck:
+      test: ["CMD", "python3", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - ./anonymizer/patterns.json:/app/patterns.json:ro
+    tmpfs:
+      - /tmp
+    user: "65532:65532" # nonroot
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - ai-platform
+
+  # ══════════════════════════════════════════════════════════════
+  # LITELLM - Proxy LLM unifié (interne)
+  # ══════════════════════════════════════════════════════════════
+  litellm:
+    image: ghcr.io/berriai/litellm:${LITELLM_VERSION:-main-v1.35.8}
+    container_name: litellm
+    expose:
+      - "4000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml"]
+    restart: unless-stopped
+    read_only: false # LiteLLM might need write access for logs/db
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - ai-platform
+
+networks:
+  ai-platform:
+    driver: bridge

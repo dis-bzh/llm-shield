@@ -1,0 +1,19 @@
+{
+    "api_key_generic": "(?i)(api[_-]?key|apikey)\\s*[:=]\\s*[\"']?([a-zA-Z0-9_\\-]{8,})[\"']?",
+    "aws_access_key": "(?i)AKIA[0-9A-Z]{16}",
+    "aws_secret_key": "(?i)aws[_-]?secret[_-]?access[_-]?key\\s*[:=]\\s*[\"']?([a-zA-Z0-9/+=]{40})[\"']?",
+    "github_token": "gh[pousr]_[A-Za-z0-9_]{36,}",
+    "openai_key": "sk-[a-zA-Z0-9]{20,}",
+    "anthropic_key": "sk-ant-[a-zA-Z0-9\\-]{20,}",
+    "private_key": "-----BEGIN\\s+(?:RSA\\s+)?PRIVATE\\s+KEY-----[\\s\\S]*?-----END\\s+(?:RSA\\s+)?PRIVATE\\s+KEY-----",
+    "certificate": "-----BEGIN\\s+CERTIFICATE-----[\\s\\S]*?-----END\\s+CERTIFICATE-----",
+    "password_field": "(?i)(password|passwd|pwd|secret)\\s*[:=]\\s*[\"']?([^\\s\"'\\,]{6,})[\"']?",
+    "bearer_token": "(?i)bearer\\s+[a-zA-Z0-9_\\-\\.]{20,}",
+    "jwt_token": "eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*",
+    "connection_string": "(?i)(mongodb|postgres|mysql|redis)://[^\\s]+",
+    "slack_webhook": "https://hooks\\.slack\\.com/services/[A-Z0-9/]+",
+    "stripe_key": "(?i)(sk|pk)_(test|live)_[a-zA-Z0-9]{24,}",
+    "phone_fr": "(?:(?:\\+33|0033|0)[1-9])(?:[\\s.-]?\\d{2}){4}",
+    "email": "(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}",
+    "url": "(?i)https?://[^\\s]+"
+}
