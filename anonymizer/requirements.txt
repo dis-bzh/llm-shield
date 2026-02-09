@@ -3,3 +3,4 @@ flask>=3.0.0
 gunicorn>=21.0.0
 # Let scrubadub manage its textblob dependency
 textblob
+pytest
