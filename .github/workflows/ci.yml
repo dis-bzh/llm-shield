@@ -64,6 +64,7 @@ jobs:
         run: |
           cd anonymizer
           pip install -r requirements.txt
+          python download_models.py
           pytest test_app.py -v --tb=short
 
       - name: Install gateway deps & test

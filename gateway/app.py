@@ -4,10 +4,10 @@ Architecture: Client → Gateway → Anonymizer → LiteLLM → LLM externe
 
 SÉCURITÉ: Mode fail-safe - si l'anonymisation échoue, la requête est BLOQUÉE
 """
-from flask import Flask, request, jsonify, Response
-import requests
-import os
 import logging
+import os
+import requests
+from flask import Flask, request, jsonify, Response
 
 app = Flask(__name__)
 
@@ -77,9 +77,9 @@ def health():
     try:
         resp = requests.get(f"{ANONYMIZER_URL}/health", timeout=5)
         anonymizer_ok = resp.status_code == 200
-    except:
+    except Exception:
         anonymizer_ok = False
-    
+
     status = "healthy" if anonymizer_ok else "degraded"
     return jsonify({
         "status": status,
@@ -110,18 +110,18 @@ def chat_completions():
     2. Anonymise les messages (OBLIGATOIRE)
     3. Forward à LiteLLM
     4. Retourne la réponse
-    
+
     SÉCURITÉ: Si l'anonymisation échoue, la requête est BLOQUÉE (503).
     """
     data = request.get_json()
-    
+
     if not data:
         return jsonify({"error": "No JSON data"}), 400
-    
+
     logger.info("=" * 60)
     logger.info("🚀 Nouvelle requête chat/completions")
     logger.info(f"   Modèle: {data.get('model', 'unknown')}")
-    
+
     # Anonymiser les messages (OBLIGATOIRE - fail-safe)
     if "messages" in data:
         try:
@@ -134,9 +134,9 @@ def chat_completions():
                 "error": "Anonymization failed - request blocked for security",
                 "detail": str(e)
             }), 503
-    
+
     logger.info("📤 Envoi à LiteLLM...")
-    
+
     # Forward à LiteLLM
     try:
         response = requests.post(
@@ -145,10 +145,10 @@ def chat_completions():
             headers={"Content-Type": "application/json"},
             timeout=60
         )
-        
+
         logger.info(f"📥 Réponse LiteLLM: {response.status_code}")
         logger.info("=" * 60)
-        
+
         return Response(
             response.content,
             status=response.status_code,
