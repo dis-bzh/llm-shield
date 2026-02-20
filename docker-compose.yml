@@ -5,7 +5,7 @@ services:
   # REVERSE PROXY - Gestion HTTPS avec Let's Encrypt
   # ══════════════════════════════════════════════════════════════
   https-proxy:
-    image: nginx-proxy/nginx-proxy
+    image: nginxproxy/nginx-proxy:1.10-alpine
     container_name: https-proxy
     ports:
       - "80:80"
@@ -23,7 +23,7 @@ services:
   # CERT MANAGER - Gestion automatique des certificats SSL
   # ══════════════════════════════════════════════════════════════
   cert-manager:
-    image: nginx-proxy/acme-companion
+    image: nginxproxy/acme-companion:2.6
     container_name: cert-manager
     volumes_from:
       - https-proxy
