@@ -14,11 +14,15 @@ permissions:
   security-events: write
 
 jobs:
-  # Build et test des services
-  build-services:
-    name: Build Services
+  # Build, Scan et Publish des services
+  build-and-publish:
+    name: Build & Publish
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
     
     steps:
       - name: Checkout
@@ -27,21 +31,90 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Anonymizer
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Anonymizer ---
+      - name: Extract metadata (tags, labels) for Anonymizer
+        id: meta-anonymizer
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/anonymizer
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=sha-
+
+      - name: Build Anonymizer (Load for Scan)
         uses: docker/build-push-action@v5
         with:
           context: ./anonymizer
-          push: false
-          tags: llm-shield-anonymizer:test
+          load: true
+          tags: llm-shield-anonymizer:scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build Gateway
+      - name: Scan Anonymizer with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: llm-shield-anonymizer:scan
+          format: 'table'
+          exit-code: '0' # Non-blocking for training
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Build & Push Anonymizer
+        uses: docker/build-push-action@v5
+        with:
+          context: ./anonymizer
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-anonymizer.outputs.tags }}
+          labels: ${{ steps.meta-anonymizer.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # --- Gateway ---
+      - name: Extract metadata (tags, labels) for Gateway
+        id: meta-gateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/gateway
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=sha-
+
+      - name: Build Gateway (Load for Scan)
         uses: docker/build-push-action@v5
         with:
           context: ./gateway
-          push: false
-          tags: llm-shield-gateway:test
+          load: true
+          tags: llm-shield-gateway:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan Gateway with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: llm-shield-gateway:scan
+          format: 'table'
+          exit-code: '0' # Non-blocking for training
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Build & Push Gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-gateway.outputs.tags }}
+          labels: ${{ steps.meta-gateway.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -77,7 +150,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: build-services
+    needs: build-and-publish
     timeout-minutes: 10
     
     steps:
@@ -117,39 +190,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose down
-
-  # Scan de sécurité des images
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    needs: build-services
-    timeout-minutes: 10
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build Anonymizer for scan
-        run: docker build -t llm-shield-anonymizer:scan ./anonymizer
-
-      - name: Scan Anonymizer with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: llm-shield-anonymizer:scan
-          format: 'table'
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Build Gateway for scan
-        run: docker build -t llm-shield-gateway:scan ./gateway
-
-      - name: Scan Gateway with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: llm-shield-gateway:scan
-          format: 'table'
-          exit-code: '0'
-          severity: 'CRITICAL,HIGH'
 
   # Lint Python
   lint:
