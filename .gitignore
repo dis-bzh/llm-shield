@@ -1,4 +1,15 @@
+# Local environment (sensitive)
 .env
+.env.local
+
+# Python
+__pycache__
+.pytest_cache/
+*.pyc
+
+# Docker
+*.log
+docker-compose-local.yml
 
 # Ansible
 ansible.cfg
@@ -12,7 +23,3 @@ backend.tfvars
 
 # shared
 terraform/inventory
-
-# docs
-__pycache__
-.pytest_cache/

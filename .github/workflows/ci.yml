@@ -118,6 +118,59 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Scan des images tierces (téléchargées à runtime, non rebuildées)
+  third-party-scan:
+    name: Trivy — Images tierces
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pull des images tierces utilisées par docker-compose
+      - name: Pull images tierces
+        run: |
+          docker pull nginxproxy/nginx-proxy:1.10-alpine
+          docker pull nginxproxy/acme-companion:2.6
+          docker pull nginx:1.25.4-alpine
+          docker pull ghcr.io/berriai/litellm:main-v1.35.8
+
+      - name: Scan https-proxy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: nginxproxy/nginx-proxy:1.10-alpine
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Scan cert-manager
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: nginxproxy/acme-companion:2.6
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Scan nginx
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: nginx:1.25.4-alpine
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      - name: Scan litellm
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/berriai/litellm:main-v1.35.8
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
   # Unit tests Python
   unit-tests:
     name: Unit Tests

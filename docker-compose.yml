@@ -160,13 +160,26 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
+      - litellm-data:/app/data # Cache LLM (writable via volume nommé)
     command: ["--config", "/app/config.yaml"]
     restart: unless-stopped
-    read_only: false # LiteLLM needs write access
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "65532:65532" # nonroot
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=2)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      gateway:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -180,6 +193,7 @@ volumes:
   vhost:
   html:
   acme:
+  litellm-data:
 
 networks:
   ai-platform:

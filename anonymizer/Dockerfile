@@ -4,6 +4,7 @@
 # =============================================================================
 # Based on: https://piranna.github.io/2025/09/07/Minimal-and-secure-Python-distroless-Docker-images-with-Poetry/
 # Security: No shell, nonroot user, minimal attack surface
+# Build optimization : couches séparées (pip / nltk) pour cache Docker efficace
 # =============================================================================
 
 ARG DEBIAN_VERSION=12
@@ -16,13 +17,16 @@ FROM gcr.io/distroless/python3-debian${DEBIAN_VERSION} AS builder
 RUN ["python3", "-c", "from urllib.request import urlretrieve; urlretrieve('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"]
 RUN ["python3", "get-pip.py", "--break-system-packages"]
 
-# Copy and install requirements (scrubadub + flask + gunicorn + textblob)
+# Couche 1 : deps Python (cacheable si requirements.txt inchangé)
 WORKDIR /src
 COPY requirements.txt .
 RUN ["pip", "install", "--break-system-packages", "--no-cache-dir", "-r", "requirements.txt"]
-# Download textblob corpora AND missing nltk resources (punkt_tab)
+
+# Couche 2 : corpus NLTK (cacheable si download_models.py inchangé)
+# Téléchargé séparément pour ne pas invalider la couche pip à chaque build
+COPY download_models.py .
 RUN ["python3", "-m", "textblob.download_corpora"]
-RUN ["python3", "-m", "nltk.downloader", "punkt_tab", "averaged_perceptron_tagger_eng"]
+RUN ["python3", "-c", "import nltk; nltk.download('punkt_tab', quiet=True); nltk.download('averaged_perceptron_tagger_eng', quiet=True)"]
 
 # Stage 2: Production (nonroot, minimal)
 FROM gcr.io/distroless/python3-debian${DEBIAN_VERSION}:nonroot
